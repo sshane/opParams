@@ -14,7 +14,7 @@ This repo is just a backup of op_params. To install into your own fork, just gra
    ```
    * The default will be used if the user doesn't have the parameter.
 
-3. Now to change live parameters over ssh, you can connect to your EON with your WiFi hotspot, then change directory to `/data/openpilot` and run `python op_tune.py`.
+3. Now to change live parameters over ssh, you can connect to your EON with your WiFi hotspot, then change directory to `/data/openpilot` and run `python op_tune.py`. It's important to make sure you set `'live'` to `True` for your parameters.
    * Here's a gif of the tuner:
 
 <img src="gifs/op_tune.gif?raw=true" width="600">
