@@ -26,14 +26,27 @@ def read_params(params_file, default_params):
 
 class opParams:
   def __init__(self):
-    self.default_params = {'camera_offset': {'default': 0.06, 'allowed_types': [float, int], 'description': 'Your camera offset to use in lane_planner.py', 'live': True},  # float and int is important
-                           'non_live_param': {'default': True, 'allowed_types': [bool], 'description': 'Default, allowed types and live parameter should be given for new params.', 'live': False}}
+    """
+      To add your own parameter to opParams in your fork, simply add a new dictionary entry with the name of your parameter and its default value to save to new users' op_params.json file.
+      The description, allowed_types, and live keys are no longer required but recommended to help users edit their parameters with opEdit and opTune correctly.
+        - The description value will be shown to users when they use opEdit or opTune to change the value of the parameter.
+        - The allowed_types key is used to restrict what kinds of values can be entered with opEdit so that users can't reasonably break the fork with unintended behavior.
+          Limiting the range of floats or integers is still recommended when `.get`ting the parameter.
+          When a None value is allowed, use `type(None)` instead of None, as opEdit checks the type against the values in the key with `isinstance()`.
+        - Finally, the live key tells both opParams and opTune that it's a live parameter that will change. Therefore, you must place the `op_params.get()` call in the update function so that it can update.
+      Here's an example of the minimum required dictionary:
+
+      self.default_params = {'camera_offset': {'default': 0.06}}
+    """
+
+    self.default_params = {'camera_offset': {'default': 0.06, 'allowed_types': [float, int], 'description': 'Your camera offset to use in lane_planner.py', 'live': True},
+                           'non_live_param': {'default': False}}
 
     self.params = {}
     self.params_file = "/data/op_params.json"
     self.kegman_file = "/data/kegman.json"
     self.last_read_time = time.time()
-    self.read_frequency = 5.0  # max frequency to read with self.get(...) (sec)  # TODO: change to your desired frequency
+    self.read_frequency = 5.0  # max frequency to read with self.get(...) (sec)
     self.force_update = False  # replaces values with default params if True, not just add add missing key/value pairs
     self.to_delete = ['dynamic_lane_speed']
     self.run_init()  # restores, reads, and updates params
@@ -101,18 +114,20 @@ class opParams:
     self.params.update({key: value})
     write_params(self.params, self.params_file)
 
-  def get(self, key=None, default=None):  # can specify a default value if key doesn't exist
+  def get(self, key=None, default=None, force_update=False):  # can specify a default value if key doesn't exist
+    self.update_params(key, force_update)
     if key is None:
       return self.params
-    if not travis and key in self.default_params and self.default_params[key]['live']:  # if is a live param, we want to get updates while openpilot is running
-      if time.time() - self.last_read_time >= self.read_frequency:  # make sure we aren't reading file too often
+    return self.params[key] if key in self.params else default
+
+  def update_params(self, key, force_update):
+    if force_update or (key in self.default_params and 'live' in self.default_params[key] and self.default_params[key]['live']):  # if is a live param, we want to get updates while openpilot is running
+      if not travis and time.time() - self.last_read_time >= self.read_frequency:  # make sure we aren't reading file too often
         self.params, read_status = read_params(self.params_file, self.format_default_params())
         if not read_status:
-          time.sleep(0.01)
-          self.params, read_status = read_params(self.params_file, self.format_default_params())  # if the file was being written to, retry once
+          time.sleep(1/100.)
+          self.params, _ = read_params(self.params_file, self.format_default_params())  # if the file was being written to, retry once
         self.last_read_time = time.time()
-
-    return self.params[key] if key in self.params else default
 
   def delete(self, key):
     if key in self.params:

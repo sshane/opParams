@@ -11,7 +11,7 @@ class opTune:
 
   def start(self):
     print('Welcome to the opParams command line live tuner!')
-    editable = [p for p in self.op_params.get() if p in self.op_params.default_params and self.op_params.default_params[p]['live']]
+    editable = [p for p in self.op_params.get(force_update=True) if p in self.op_params.default_params and 'live' in self.op_params.default_params[p] and self.op_params.default_params[p]['live']]
     while True:
       print('Choose a parameter to tune:')
       print('\n'.join(['{}. {}'.format(idx + 1, p) for idx, p in enumerate(editable)]))
@@ -25,12 +25,24 @@ class opTune:
         continue
       self.chosen(editable[choice])
 
-  def chosen(self, param):
-    allowed_types = self.op_params.default_params[param]['allowed_types']
-    print('\nChosen parameter: {}'.format(param))
-    print('Current value: {}'.format(self.op_params.get(param)))
-    print('\n- Description: {}'.format(self.op_params.default_params[param]['description']))
-    print('- Allowed types: {}\n'.format(', '.join([str(i).split("'")[1] for i in allowed_types])))
+  def chosen(self, chosen_key):
+    old_value = self.op_params.get(chosen_key)
+    print('Chosen parameter: {}'.format(chosen_key))
+    print('Current value: {} (type: {})'.format(old_value, str(type(old_value)).split("'")[1]))
+
+    has_description = 'description' in self.op_params.default_params[chosen_key]
+    has_allowed_types = 'allowed_types' in self.op_params.default_params[chosen_key]
+
+    to_print = []
+    if has_description:
+      to_print.append('>>  Description: {}'.format(self.op_params.default_params[chosen_key]['description'].replace('\n', '\n     ')))
+    if has_allowed_types:
+      allowed_types = self.op_params.default_params[chosen_key]['allowed_types']
+      to_print.append('>>  Allowed types: {}'.format(', '.join([str(i).split("'")[1] for i in allowed_types])))
+
+    if to_print:
+        print('\n{}\n'.format('\n'.join(to_print)))
+
     while True:
       value = input('Enter value: ')
       if value == '':
@@ -42,11 +54,11 @@ class opTune:
         self.message('Cannot parse input!')
         continue
 
-      if not any([isinstance(value, typ) for typ in allowed_types]):
-        self.message('The type of data you entered ({}) is not allowed with this parameter!\n'.format(str(type(value)).split("'")[1]))
+      if has_allowed_types and not any([isinstance(value, typ) for typ in allowed_types]):
+        self.message('The type of data you entered ({}) is not allowed with this parameter!'.format(str(type(value)).split("'")[1]))
         continue
-      self.op_params.put(param, value)
-      print('Saved {} with value: {}! (type: {})\n'.format(param, value, str(type(value)).split("'")[1]))
+      self.op_params.put(chosen_key, value)
+      print('Saved {} with value: {}! (type: {})\n'.format(chosen_key, value, str(type(value)).split("'")[1]))
 
   def message(self, msg):
     print('--------\n{}\n--------'.format(msg), flush=True)
