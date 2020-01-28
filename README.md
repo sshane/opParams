@@ -2,7 +2,7 @@
 
 This repo is just a backup of op_params. To install into your own fork, just grab the files in the [`openpilot`](/openpilot) folder and place them into your repository in their respective directories.
 
-1. Make sure you add your new parameter to [`op_params.py`](/openpilot/common/op_params.py) filling out the `default', 'allowed_types', and 'live' keys.
+1. Make sure you add your new parameter to [`op_params.py`](/openpilot/common/op_params.py) filling out the `default`, `allowed_types`, and `live` keys. **(Update: allowed types, description, and live are no longer required but recommended if you want to give your users the ability to change parameters. Live is assumed to be False by default if not specified. `default` is still required!)**
    * You can also change the read, or update frequency in that file.
 2. In the file you want to receive updates, use this code in place of the variable you want to use.
    * So for camera offset, we can do this in `lane_planner.py`:
