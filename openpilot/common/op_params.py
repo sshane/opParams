@@ -48,7 +48,7 @@ class opParams:
     self.last_read_time = time.time()
     self.read_frequency = 5.0  # max frequency to read with self.get(...) (sec)
     self.force_update = False  # replaces values with default params if True, not just add add missing key/value pairs
-    self.to_delete = ['dynamic_lane_speed']
+    self.to_delete = []
     self.run_init()  # restores, reads, and updates params
 
   def create_id(self):  # creates unique identifier to send with sentry errors. please update uniqueID with op_edit.py to your username!
@@ -104,11 +104,12 @@ class opParams:
       write_params(self.params, self.params_file)
 
   def delete_old(self):
-    prev_params = dict(self.params)
+    deleted = False
     for i in self.to_delete:
       if i in self.params:
         del self.params[i]
-    return prev_params == self.params
+        deleted = True
+    return deleted
 
   def put(self, key, value):
     self.params.update({key: value})
