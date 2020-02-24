@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import json
 import time
@@ -104,12 +105,11 @@ class opParams:
       write_params(self.params, self.params_file)
 
   def delete_old(self):
-    deleted = False
+    prev_params = dict(self.params)
     for i in self.to_delete:
       if i in self.params:
         del self.params[i]
-        deleted = True
-    return deleted
+    return prev_params == self.params
 
   def put(self, key, value):
     self.params.update({key: value})
@@ -119,7 +119,29 @@ class opParams:
     self.update_params(key, force_update)
     if key is None:
       return self.params
-    return self.params[key] if key in self.params else default
+
+    if key in self.params:
+      if key in self.default_params and 'allowed_types' in self.default_params[key]:
+        value = self.params[key]
+        allowed_types = self.default_params[key]['allowed_types']
+        valid_type = type(value) in allowed_types
+        if not valid_type:
+          value = self.value_from_types(allowed_types)
+      else:
+        value = self.params[key]
+    else:
+      value = default
+
+    return value
+
+  def value_from_types(self, allowed_types):
+    if list in allowed_types:
+      return []
+    elif float in allowed_types or int in allowed_types:
+      return 0
+    elif str in allowed_types:
+      return ''
+    return None
 
   def update_params(self, key, force_update):
     if force_update or (key in self.default_params and 'live' in self.default_params[key] and self.default_params[key]['live']):  # if is a live param, we want to get updates while openpilot is running
