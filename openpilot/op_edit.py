@@ -9,46 +9,33 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
     self.op_params = opParams()
     self.params = None
     self.sleep_time = 1.0
-    self.live_tuning = False
-    self.welcome()
-
-  def welcome(self):
-    print('Welcome to the opParams command line editor!')
-    while True:
-      print('Would you like to enter opEdit\'s live-tuning mode?')
-      choice = input('[Y/n]: ').lower().strip()
-      if choice in ['y', 'ye', 'yes']:
-        self.live_tuning = True
-        self.run_loop()
-        break
-      elif choice in ['n', 'no']:
-        self.run_loop()
-        break
-      elif choice in ['e', 'exit']:
-        break
+    self.live_tuning = self.op_params.get('op_edit_live_mode', False)
+    self.run_loop()
 
   def run_loop(self):
-    if not self.live_tuning:
-      print('Here are your parameters:\n')
-    else:
-      print('Here are your live parameters:\n')
+    print('Welcome to the opParams command line editor!')
     while True:
+      if not self.live_tuning:
+        print('Here are your parameters:\n')
+      else:
+        print('Here are your live parameters:\n')
       self.params = self.op_params.get(force_update=True)
       if self.live_tuning:  # only display live tunable params
-        self.params = {k: v for k, v in self.params.items() if self.op_params.get_key_info(k).live}
+        self.params = {k: v for k, v in self.params.items() if self.op_params.key_info(k).live}
 
       values_list = [self.params[i] if len(str(self.params[i])) < 20 else '{} ... {}'.format(str(self.params[i])[:30], str(self.params[i])[-15:]) for i in self.params]
-      live = ['(live!)' if self.op_params.get_key_info(i).live else '' for i in self.params]
+      live = ['(live!)' if self.op_params.key_info(i).live else '' for i in self.params]
 
       to_print = ['{}. {}: {}  {}'.format(idx + 1, i, values_list[idx], live[idx]) for idx, i in enumerate(self.params)]
-      to_print.append('\n{}. Add new parameter!'.format(len(self.params) + 1))
-      to_print.append('{}. Delete parameter!'.format(len(self.params) + 2))
+      to_print.append('---\n{}. Add new parameter'.format(len(to_print) + 1))
+      to_print.append('{}. Delete parameter'.format(len(to_print) + 1))
+      to_print.append('{}. Toggle live tuning'.format(len(to_print) + 1))
 
       print('\n'.join(to_print))
       print('\nChoose a parameter to explore (by integer index): ')
 
       choice = input('>> ').strip()
-      parsed, choice = self.parse_choice(choice)
+      parsed, choice = self.parse_choice(choice, len(to_print))
       if parsed == 'continue':
         continue
       elif parsed == 'add':
@@ -57,10 +44,13 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         self.change_parameter(choice)
       elif parsed == 'delete':
         self.delete_parameter()
+      elif parsed == 'live':
+        self.live_tuning = not self.live_tuning
+        self.op_params.put('op_edit_live_mode', self.live_tuning)  # for next opEdit startup
       elif parsed == 'error':
         return
 
-  def parse_choice(self, choice):
+  def parse_choice(self, choice, opt_len):
     if choice.isdigit():
       choice = int(choice)
       choice -= 1
@@ -70,22 +60,23 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
     else:
       self.message('Not an integer!')
       return 'retry', choice
-    if choice not in range(0, len(self.params) + 2):  # three for add/delete parameter
+    if choice not in range(opt_len):  # number of options to choose from
       self.message('Not in range!')
       return 'continue', choice
 
-    if choice == len(self.params):  # add new parameter
+    if choice == opt_len - 3:  # add new parameter
       return 'add', choice
-
-    if choice == len(self.params) + 1:  # delete parameter
+    elif choice == opt_len - 2:  # delete parameter
       return 'delete', choice
+    elif choice == opt_len - 1:  # live tuning mode
+      return 'live', choice
 
     return 'change', choice
 
   def change_parameter(self, choice):
     while True:
       chosen_key = list(self.params)[choice]
-      key_info = self.op_params.get_key_info(chosen_key)
+      key_info = self.op_params.key_info(chosen_key)
 
       old_value = self.params[chosen_key]
       print('Chosen parameter: {}'.format(chosen_key))
