@@ -10,10 +10,29 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
     self.params = None
     self.sleep_time = 1.0
     self.live_tuning = self.op_params.get('op_edit_live_mode', False)
+    self.username = self.op_params.get('username', None)
+
+    self.run_init()
+
+  def run_init(self):
+    if self.username is None:
+      print('\nWelcome to the opParams command line editor!')
+      print('Parameter \'username\' is missing! Would you like to add your Discord username for easier crash debugging?')
+      if self.is_affirmative():
+        print('Please enter your Discord username so the developers can reach out if a crash occurs:')
+        username = ''
+        while username == '':
+          username = input('>> ').strip()
+        self.message('Thanks! Saving your Discord username to op_params.json\n'
+                     'Edit the \'username\' parameter at any time to update', sleep_time=3.0)
+        self.op_params.put('username', username)
+        self.username = username
+    else:
+      print('\nWelcome to the opParams command line editor, {}!'.format(self.username))
+
     self.run_loop()
 
   def run_loop(self):
-    print('Welcome to the opParams command line editor!')
     while True:
       if not self.live_tuning:
         print('Here are your parameters:\n')
@@ -27,15 +46,20 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       live = ['(live!)' if self.op_params.key_info(i).live else '' for i in self.params]
 
       to_print = ['{}. {}: {}  {}'.format(idx + 1, i, values_list[idx], live[idx]) for idx, i in enumerate(self.params)]
-      to_print.append('---\n{}. Add new parameter'.format(len(to_print) + 1))
-      to_print.append('{}. Delete parameter'.format(len(to_print) + 1))
-      to_print.append('{}. Toggle live tuning'.format(len(to_print) + 1))
+      # to_print.append('---\n{}. Add new parameter'.format(len(to_print) + 1))
+      # to_print.append('{}. Delete parameter'.format(len(to_print) + 1))
+      # to_print.append('{}. Toggle live tuning'.format(len(to_print) + 1))
+
+      extras = ['---\na. Add new parameter',
+                'd. Delete parameter',
+                'l. Toggle live tuning']
+      to_print += extras
 
       print('\n'.join(to_print))
-      print('\nChoose a parameter to explore (by integer index): ')
+      print('\nChoose a parameter to explore (by identifier): ')
 
       choice = input('>> ').strip()
-      parsed, choice = self.parse_choice(choice, len(to_print))
+      parsed, choice = self.parse_choice(choice, len(to_print) - len(extras))
       if parsed == 'continue':
         continue
       elif parsed == 'add':
@@ -47,31 +71,34 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       elif parsed == 'live':
         self.live_tuning = not self.live_tuning
         self.op_params.put('op_edit_live_mode', self.live_tuning)  # for next opEdit startup
-      elif parsed == 'error':
+      elif parsed == 'exit':
         return
 
   def parse_choice(self, choice, opt_len):
     if choice.isdigit():
       choice = int(choice)
       choice -= 1
-    elif choice == '':
-      print('Exiting opEdit!')
-      return 'error', choice
-    else:
-      self.message('Not an integer!')
-      return 'retry', choice
-    if choice not in range(opt_len):  # number of options to choose from
-      self.message('Not in range!')
-      return 'continue', choice
+      if choice not in range(opt_len):  # number of options to choose from
+        self.message('Not in range!')
+        return 'continue', choice
+      return 'change', choice
 
-    if choice == opt_len - 3:  # add new parameter
+    if choice == '':
+      print('Exiting opEdit!')
+      return 'exit', choice
+    # else:
+    #   self.message('Not an integer!')
+    #   return 'retry', choice
+
+    if choice in ['a', 'add']:  # add new parameter
       return 'add', choice
-    elif choice == opt_len - 2:  # delete parameter
+    elif choice in ['d', 'delete', 'del']:  # delete parameter
       return 'delete', choice
-    elif choice == opt_len - 1:  # live tuning mode
+    elif choice in ['l', 'live']:  # live tuning mode
       return 'live', choice
 
-    return 'change', choice
+    self.message('Invalid choice!')
+    return 'continue', choice
 
   def change_parameter(self, choice):
     while True:
@@ -131,6 +158,9 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         else:
           self.message('Not saved!')
         return
+
+  def is_affirmative(self):
+    return input('[Y/n]: ').lower().strip() in ['yes', 'ye', 'y']
 
   def parse_input(self, dat):
     dat = dat.strip()
@@ -202,9 +232,11 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         self.message('Not saved!')
       return
 
-  def message(self, msg):
+  def message(self, msg, sleep_time=None):
+    if sleep_time is None:
+      sleep_time = self.sleep_time
     print('--------\n{}\n--------'.format(msg), flush=True)
-    time.sleep(self.sleep_time)
+    time.sleep(sleep_time)
     print()
 
 
