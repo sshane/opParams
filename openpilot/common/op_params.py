@@ -21,7 +21,7 @@ def read_params(params_file, default_params):
       params = json.load(f)
     return params, True
   except Exception as e:
-    print(e)
+    cloudlog.error(e)
     params = default_params
     return params, False
 
@@ -38,12 +38,12 @@ class opParams:
   def __init__(self):
     """
       To add your own parameter to opParams in your fork, simply add a new dictionary entry with the name of your parameter and its default value to save to new users' op_params.json file.
-      The description, allowed_types, and live keys are no longer required but recommended to help users edit their parameters with opEdit and opTune correctly.
-        - The description value will be shown to users when they use opEdit or opTune to change the value of the parameter.
+      The description, allowed_types, and live keys are no longer required but recommended to help users edit their parameters with opEdit correctly.
+        - The description value will be shown to users when they use opEdit to change the value of the parameter.
         - The allowed_types key is used to restrict what kinds of values can be entered with opEdit so that users can't reasonably break the fork with unintended behavior.
           Limiting the range of floats or integers is still recommended when `.get`ting the parameter.
           When a None value is allowed, use `type(None)` instead of None, as opEdit checks the type against the values in the key with `isinstance()`.
-        - Finally, the live key tells both opParams and opTune that it's a live parameter that will change. Therefore, you must place the `op_params.get()` call in the update function so that it can update.
+        - Finally, the live key tells both opParams and opEdit that it's a live parameter that will change. Therefore, you must place the `op_params.get()` call in the update function so that it can update.
       Here's an example of the minimum required dictionary:
 
       self.default_params = {'camera_offset': {'default': 0.06}}
@@ -51,15 +51,15 @@ class opParams:
 
     self.default_params = {'camera_offset': {'default': 0.06, 'allowed_types': [float, int], 'description': 'Your camera offset to use in lane_planner.py', 'live': True},
                            'non_live_param': {'default': False},
+
                            'op_edit_live_mode': {'default': False, 'description': 'This parameter controls which mode opEdit starts in. It should be hidden from the user with the hide key', 'hide': True}}
 
     self.params = {}
     self.params_file = "/data/op_params.json"
-    self.kegman_file = "/data/kegman.json"
     self.last_read_time = time.time()
     self.read_frequency = 5.0  # max frequency to read with self.get(...) (sec)
     self.force_update = False  # replaces values with default params if True, not just add add missing key/value pairs
-    self.to_delete = ['dynamic_lane_speed', 'longkiV', 'following_distance', 'static_steer_ratio']
+    self.to_delete = ['old_key_to_delete']  # a list of params you want to delete (unused)
     self.run_init()  # restores, reads, and updates params
 
   def create_id(self):  # creates unique identifier to send with sentry errors. please update uniqueID with op_edit.py to your username!
@@ -86,13 +86,12 @@ class opParams:
   def format_default_params(self):
     return {key: self.default_params[key]['default'] for key in self.default_params}
 
-  def run_init(self):  # does first time initializing of default params, and/or restoring from kegman.json
+  def run_init(self):  # does first time initializing of default params
     if travis:
       self.params = self.format_default_params()
       return
     self.params = self.format_default_params()  # in case any file is corrupted
     to_write = False
-    no_params = False
     if os.path.isfile(self.params_file):
       self.params, read_status = read_params(self.params_file, self.format_default_params())
       if read_status:
@@ -100,18 +99,10 @@ class opParams:
         if self.delete_old():  # or if old params have been deleted
           to_write = True
       else:  # don't overwrite corrupted params, just print to screen
-        print("ERROR: Can't read op_params.json file")
-    elif os.path.isfile(self.kegman_file):
-      to_write = True  # write no matter what
-      try:
-        with open(self.kegman_file, "r") as f:  # restore params from kegman
-          self.params = json.load(f)
-          self.add_default_params()
-      except:
-        print("ERROR: Can't read kegman.json file")
+        cloudlog.error("ERROR: Can't read op_params.json file")
     else:
-      no_params = True  # user's first time running a fork with kegman_conf or op_params
-    if to_write or no_params:
+      to_write = True  # user's first time running a fork with op_params, write default params
+    if to_write:
       write_params(self.params, self.params_file)
 
   def delete_old(self):
