@@ -57,7 +57,7 @@ class opParams:
     self.last_read_time = time.time()
     self.read_frequency = 5.0  # max frequency to read with self.get(...) (sec)
     self.force_update = False  # replaces values with default params if True, not just add add missing key/value pairs
-    self.to_delete = ['old_key_to_delete']  # a list of params you want to delete (unused)
+    self.to_delete = ['old_key_to_delete']  # a list of params you want to delete from users' op_params file (unused)
     self.run_init()  # restores, reads, and updates params
 
   def add_default_params(self):
