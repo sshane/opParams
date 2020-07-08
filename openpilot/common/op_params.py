@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 import os
 import json
-import time
-from selfdrive.swaglog import cloudlog
-from common.travis_checker import travis
+try:
+  from common.realtime import sec_since_boot
+except ImportError:
+  import time
+  sec_since_boot = time.time
+  print("opParams WARNING: using python time.time() instead of faster sec_since_boot")
+
+travis = False
 
 
 class KeyInfo:
   default = None
   allowed_types = []
+  is_list = False
   has_allowed_types = False
   live = False
   has_default = False
@@ -38,8 +44,8 @@ class opParams:
 
     self.params = {}
     self.params_file = "/data/op_params.json"
-    self.last_read_time = time.time()
-    self.read_frequency = 5.0  # max frequency to read with self.get(...) (sec)
+    self.last_read_time = sec_since_boot()
+    self.read_frequency = 2.5  # max frequency to read with self.get(...) (sec)
     self.force_update = False  # replaces values with default params if True, not just add add missing key/value pairs
     self.to_delete = ['old_key_to_delete']  # a list of params you want to delete (unused)
     self.run_init()  # restores, reads, and updates params
@@ -55,29 +61,29 @@ class opParams:
     if os.path.isfile(self.params_file):
       if self._read():
         to_write = not self._add_default_params()  # if new default data has been added
-        if self._delete_old:  # or if old params have been deleted
-          to_write = True
+        to_write = self._delete_old or to_write  # or if old params have been deleted
       else:  # don't overwrite corrupted params, just print
-        cloudlog.error("ERROR: Can't read op_params.json file")
+        print("opParams ERROR: Can't read op_params.json file")
     else:
       to_write = True  # user's first time running a fork with op_params, write default params
 
     if to_write:
       self._write()
+      os.chmod(self.params_file, 0o764)
 
   def get(self, key=None, default=None, force_update=False):  # can specify a default value if key doesn't exist
-    self._update_params(key, force_update)
     if key is None:
       return self._get_all()
 
+    key_info = self.key_info(key)
+    self._update_params(key_info, force_update)
     if key in self.params:
-      key_info = self.key_info(key)
       if key_info.has_allowed_types:
         value = self.params[key]
         if type(value) in key_info.allowed_types:
           return value  # all good, returning user's value
 
-        cloudlog.warning('op_params: User\'s value is not valid!')
+        print('opParams WARNING: User\'s value is not valid!')
         if key_info.has_default:  # invalid value type, try to use default value
           if type(key_info.default) in key_info.allowed_types:  # actually check if the default is valid
             # return default value because user's value of key is not in the allowed_types to avoid crashing openpilot
@@ -100,14 +106,18 @@ class opParams:
 
   def key_info(self, key):
     key_info = KeyInfo()
-    if key is None:
+    if key is None or key not in self.default_params:
       return key_info
     if key in self.default_params:
       if 'allowed_types' in self.default_params[key]:
         allowed_types = self.default_params[key]['allowed_types']
         if isinstance(allowed_types, list) and len(allowed_types) > 0:
           key_info.has_allowed_types = True
-          key_info.allowed_types = allowed_types
+          key_info.allowed_types = list(allowed_types)
+          if list in [type(typ) for typ in allowed_types]:
+            key_info.is_list = True
+            key_info.allowed_types.remove(list)
+            key_info.allowed_types = key_info.allowed_types[0]
 
       if 'live' in self.default_params[key]:
         key_info.live = self.default_params[key]['live']
@@ -138,9 +148,9 @@ class opParams:
   @property
   def _delete_old(self):
     deleted = False
-    for i in self.to_delete:
-      if i in self.params:
-        del self.params[i]
+    for param in self.to_delete:
+      if param in self.params:
+        del self.params[param]
         deleted = True
     return deleted
 
@@ -158,24 +168,23 @@ class opParams:
       return ''
     return None  # unknown type
 
-  def _update_params(self, key, force_update):
-    if force_update or self.key_info(key).live:  # if is a live param, we want to get updates while openpilot is running
-      if not travis and (time.time() - self.last_read_time >= self.read_frequency or force_update):  # make sure we aren't reading file too often
+  def _update_params(self, key_info, force_update):
+    if force_update or key_info.live:  # if is a live param, we want to get updates while openpilot is running
+      if not travis and (sec_since_boot() - self.last_read_time >= self.read_frequency or force_update):  # make sure we aren't reading file too often
         if self._read():
-          self.last_read_time = time.time()
+          self.last_read_time = sec_since_boot()
 
   def _read(self):
     try:
       with open(self.params_file, "r") as f:
-        self.params = json.load(f)
+        self.params = json.loads(f.read())
       return True
     except Exception as e:
-      cloudlog.error(e)
+      print('opParams ERROR: {}'.format(e))
       self.params = self._format_default_params()
       return False
 
   def _write(self):
     if not travis:
       with open(self.params_file, "w") as f:
-        json.dump(self.params, f, indent=2, sort_keys=True)
-      os.chmod(self.params_file, 0o764)
+        f.write(json.dumps(self.params, indent=2))  # can further speed it up by remove indentation but makes file hard to read
