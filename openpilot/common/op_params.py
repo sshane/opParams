@@ -30,7 +30,7 @@ class Param:
     self._create_attrs()
 
   def is_valid(self, value):
-    if not self.has_allowed_types:
+    if not self.has_allowed_types:  # always valid if no allowed types, otherwise checks to make sure
       return True
     return type(value) in self.allowed_types
 
@@ -57,7 +57,7 @@ class opParams:
         - Finally, the live arg tells both opParams and opEdit that it's a live parameter that will change. Therefore, you must place the `op_params.get()` call in the update function so that it can update.
 
       Here's an example of a good fork_param entry:
-      self.fork_params = {'camera_offset': Param(default=0.06, allowed_types=VT.number)}  # VT.number allows both floats and ints
+      self.fork_params = {'camera_offset': Param(default=0.06, allowed_types=VT.number), live=True}  # VT.number allows both floats and ints
     """
 
     VT = ValueTypes()
@@ -66,8 +66,8 @@ class opParams:
     self._params_file = '/data/op_params.json'
     self._backup_file = '/data/op_params_corrupt.json'
     self._last_read_time = sec_since_boot()
-    self.read_frequency = 2.5  # max frequency to read with self.get(...) (sec)
-    self._to_delete = ['lane_hug_direction', 'lane_hug_angle_offset', 'prius_use_lqr']  # a list of params you want to delete (unused)
+    self.read_frequency = 3  # max frequency to read with self.get(...) (sec)
+    self._to_delete = []  # a list of unused params you want to delete
     self._run_init()  # restores, reads, and updates params
 
   def _run_init(self):  # does first time initializing of default params
@@ -75,10 +75,10 @@ class opParams:
     self.fork_params['username'] = Param(None, [type(None), str, bool], 'Your identifier provided with any crash logs sent to Sentry.\nHelps the developer reach out to you if anything goes wrong')
     self.fork_params['op_edit_live_mode'] = Param(False, bool, 'This parameter controls which mode opEdit starts in', hidden=True)
     self.params = self._get_all_params(default=True)  # in case file is corrupted
+
     if travis:
       return
 
-    to_write = False
     if os.path.isfile(self._params_file):
       if self._read():
         to_write = self._add_default_params()  # if new default data has been added
@@ -96,16 +96,15 @@ class opParams:
       self._write()
       os.chmod(self._params_file, 0o764)
 
-  def get(self, key=None, force_live=False):  # any params you try to get MUST be in fork_params
-    param_info = self.param_info(key)
-    self._update_params(param_info, force_live)
-
+  def get(self, key=None, force_live=False):  # key=None is dict of all params
     if key is None:
-      return self._get_all_params()
+      return self._get_all_params(to_update=force_live)
 
     self._check_key_exists(key, 'get')
-    value = self.params[key]
-    if param_info.is_valid(value):  # always valid if no allowed types, otherwise checks to make sure
+    param_info = self.fork_params[key]
+    self._update_params(param_info.live or force_live)
+
+    if param_info.is_valid(value := self.params[key]):
       return value  # all good, returning user's value
 
     warning('User\'s value type is not valid! Returning default')  # somehow... it should always be valid
@@ -113,7 +112,7 @@ class opParams:
 
   def put(self, key, value):
     self._check_key_exists(key, 'put')
-    if not self.param_info(key).is_valid(value):
+    if not self.fork_params[key].is_valid(value):
       raise Exception('opParams: Tried to put a value of invalid type!')
     self.params.update({key: value})
     self._write()
@@ -123,13 +122,8 @@ class opParams:
       del self.params[key]
       self._write()
 
-  def param_info(self, key):
-    if key in self.fork_params:
-      return self.fork_params[key]
-    return Param()
-
   def _check_key_exists(self, key, met):
-    if key not in self.fork_params or key not in self.params:
+    if key not in self.fork_params:
       raise Exception('opParams: Tried to {} an unknown parameter! Key not in fork_params: {}'.format(met, key))
 
   def _add_default_params(self):
@@ -152,16 +146,19 @@ class opParams:
         deleted = True
     return deleted
 
-  def _get_all_params(self, default=False, return_hidden=False):
+  def _get_all_params(self, default=False, return_hidden=False, to_update=False):
+    self._update_params(to_update)
     if default:
       return {k: p.default for k, p in self.fork_params.items()}
     return {k: self.params[k] for k, p in self.fork_params.items() if k in self.params and (not p.hidden or return_hidden)}
 
-  def _update_params(self, param_info, force_live):
-    if force_live or param_info.live:  # if is a live param, we want to get updates while openpilot is running
-      if not travis and sec_since_boot() - self._last_read_time >= self.read_frequency:  # make sure we aren't reading file too often
-        if self._read():
-          self._last_read_time = sec_since_boot()
+  def _update_params(self, to_update):
+    if not travis and sec_since_boot() - self._last_read_time >= self.read_frequency and to_update:  # make sure we aren't reading file too often
+      if self._read():
+        self._last_read_time = sec_since_boot()
+
+  def __getitem__(self, s):  # can also do op_params['param_name']
+    return self.get(s)
 
   def _read(self):
     try:
