@@ -1,4 +1,4 @@
-# op_params
+# opParams parameter manager
 
 This repo is just a backup of op_params. To install into your own fork, just grab the files in the [`openpilot`](/openpilot) folder and place them into your repository in their respective directories.
 
