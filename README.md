@@ -9,10 +9,13 @@ This repo is just a backup of op_params. To install into your own fork, just gra
    ```python
    from common.op_params import opParams
    op_params = opParams()
-   CAMERA_OFFSET = op_params.get('camera_offset', default=0.06)  # this is not live tunable
+   CAMERA_OFFSET = op_params.get('camera_offset')
    ```
-   * The default will be used if the user doesn't have the parameter.
-3. **Important**: for variables you want to be live tunable, you need to use the `op_params.get()` function to set the variable on each update. So for example, with classes, you need to initialize the variable in the `__init__` function, and then in the update function, set it again. Here's a fake example for longcontrol.py:
+3. Param class arguments explaination:
+   - `Param(1., NUMBER, live=True)`: No matter how often you use opParams's `.get()` function to get this param, it will update only once per second (from opEdit for example).
+   - `Param(1., NUMBER)`: Not specifying live will let the parameter update every 10 seconds (customizable in the base `Param` class)
+   - `Param(False, bool, static=True)`: Only specifying `static=True` tells opParams to never refresh its value from the file it's stored in. Great for a toggle used on openpilot startup.
+4. **Important**: for variables you want to be live tunable, you need to use the `op_params.get()` function to set the variable on each update. So for example, with classes, you need to initialize opParams and the variable in the `__init__` function, and then in the class's update function, set it again at the top. Here's a fake example for longcontrol.py:
 ```python
 from common.op_params import opParams
 
@@ -20,15 +23,15 @@ from common.op_params import opParams
 class LongControl():
   def __init__():
     self.op_params = opParams()  # always init opParams first
-    self.your_live_tunable_variable = self.op_params.get('whatever_param', default=0.5)  # initializes the variable
+    self.your_live_tunable_variable = self.op_params.get('whatever_param')  # initializes the variable
   
   def update(stuff...):
-    self.your_live_tunable_variable = self.op_params.get('whatever_param', default=0.5)  # and this updates it as you tune. will not update live if you don't occasionally call .get() on your parameter.
+    self.your_live_tunable_variable = self.op_params.get('whatever_param')  # and this updates it as you tune. will not update live if you don't occasionally call .get() on your parameter.
     
-    # then we use the variable down here... 
+    # then we use the variable down here...
 ```
 
 4. Now to change live parameters over ssh, you can connect to your EON with your WiFi hotspot, then change directory to `/data/openpilot` and run `python op_edit.py` (which now fully supports live tuning). It's important to make sure you set `'live'` to `True` for any parameters you want to be live.
-   * Here's a gif of the tuner:
+   * Here's an ***old*** gif of the tuner:
 
 <img src="gifs/op_tune.gif?raw=true" width="600">
