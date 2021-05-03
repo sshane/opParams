@@ -10,7 +10,7 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
   def __init__(self):
     self.op_params = opParams()
     self.params = None
-    self.sleep_time = 0.75
+    self.sleep_time = 0.5
     self.live_tuning = self.op_params.get('op_edit_live_mode')
     self.username = self.op_params.get('username')
     self.type_colors = {int: COLORS.BASE(179), float: COLORS.BASE(179),
@@ -24,58 +24,55 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
 
   def run_init(self):
     if self.username is None:
-      self.success('\nWelcome to the opParams command line editor!', sleep_time=0)
-      self.prompt('Parameter \'username\' is missing! Would you like to add your Discord username for easier crash debugging?')
+      self.success('\nWelcome to the {}opParams{} command line editor!'.format(COLORS.CYAN, COLORS.SUCCESS), sleep_time=0)
+      self.prompt('Would you like to add your Discord username for easier crash debugging for the fork owner?')
+      self.prompt('Your username is only used for reaching out if a crash occurs.')
 
-      username_choice = self.input_with_options(['Y', 'n', 'don\'t ask again'], default='n')[0]
+      username_choice = self.input_with_options(['Y', 'N', 'don\'t ask again'], default='n')[0]
       if username_choice == 0:
-        self.prompt('Please enter your Discord username so the developers can reach out if a crash occurs:')
+        self.prompt('Enter a unique identifer/Discord username:')
         username = ''
         while username == '':
           username = input('>> ').strip()
-        self.success('Thanks! Saved your Discord username\n'
-                     'Edit the \'username\' parameter at any time to update', sleep_time=3.0)
         self.op_params.put('username', username)
         self.username = username
+        self.success('Thanks! Saved your username\n'
+                     'Edit the \'username\' parameter at any time to update', sleep_time=1.5)
       elif username_choice == 2:
         self.op_params.put('username', False)
         self.info('Got it, bringing you into opEdit\n'
-                  'Edit the \'username\' parameter at any time to update', sleep_time=3.0)
+                  'Edit the \'username\' parameter at any time to update', sleep_time=1.0)
     else:
-      self.success('\nWelcome to the opParams command line editor, {}!'.format(self.username), sleep_time=0)
+      self.success('\nWelcome to the {}opParams{} command line editor, {}!'.format(COLORS.CYAN, COLORS.SUCCESS, self.username), sleep_time=0)
 
     self.run_loop()
 
   def run_loop(self):
     while True:
       if not self.live_tuning:
-        self.info('Here are your parameters:', end='\n', sleep_time=0)
+        self.info('Here are all your parameters:', sleep_time=0)
+        self.info('(non-static params update while driving)', end='\n', sleep_time=0)
       else:
         self.info('Here are your live parameters:', sleep_time=0)
-        self.info('(changes take effect within {} seconds)'.format(self.op_params.read_frequency), end='\n', sleep_time=0)
-      self.params = self.op_params.get(force_live=True)
+        self.info('(changes take effect within a second)', end='\n', sleep_time=0)
+      self.params = self.op_params.get(force_update=True)
       if self.live_tuning:  # only display live tunable params
         self.params = {k: v for k, v in self.params.items() if self.op_params.fork_params[k].live}
 
       values_list = []
       for k, v in self.params.items():
         if len(str(v)) < 20:
-          v_color = ''
-          if type(v) in self.type_colors:
-            v_color = self.type_colors[type(v)]
-            if isinstance(v, bool):
-              v_color = v_color[v]
-          v = '{}{}{}'.format(v_color, v, COLORS.ENDC)
+          v = self.color_from_type(v)
         else:
           v = '{} ... {}'.format(str(v)[:30], str(v)[-15:])
         values_list.append(v)
 
-      live = [COLORS.INFO + '(live!)' + COLORS.ENDC if self.op_params.fork_params[k].live else '' for k in self.params]
+      static = [COLORS.INFO + '(static)' + COLORS.ENDC if self.op_params.fork_params[k].static else '' for k in self.params]
 
       to_print = []
       blue_gradient = [33, 39, 45, 51, 87]
       for idx, param in enumerate(self.params):
-        line = '{}. {}: {}  {}'.format(idx + 1, param, values_list[idx], live[idx])
+        line = '{}. {}: {}  {}'.format(idx + 1, param, values_list[idx], static[idx])
         if idx == self.last_choice and self.last_choice is not None:
           line = COLORS.OKGREEN + line
         else:
@@ -83,9 +80,7 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
           line = COLORS.BASE(_color) + line
         to_print.append(line)
 
-      extras = {'a': ('Add new parameter', COLORS.OKGREEN),
-                'd': ('Delete parameter', COLORS.FAIL),
-                'l': ('Toggle live tuning', COLORS.WARNING),
+      extras = {'l': ('Toggle live params', COLORS.WARNING),
                 'e': ('Exit opEdit', COLORS.PINK)}
 
       to_print += ['---'] + ['{}. {}'.format(ext_col + e, ext_txt + COLORS.ENDC) for e, (ext_txt, ext_col) in extras.items()]
@@ -96,13 +91,9 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       parsed, choice = self.parse_choice(choice, len(to_print) - len(extras))
       if parsed == 'continue':
         continue
-      elif parsed == 'add':
-        self.add_parameter()
       elif parsed == 'change':
         self.last_choice = choice
         self.change_parameter(choice)
-      elif parsed == 'delete':
-        self.delete_parameter()
       elif parsed == 'live':
         self.last_choice = None
         self.live_tuning = not self.live_tuning
@@ -119,11 +110,7 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         return 'continue', choice
       return 'change', choice
 
-    if choice in ['a', 'add']:  # add new parameter
-      return 'add', choice
-    elif choice in ['d', 'delete', 'del']:  # delete parameter
-      return 'delete', choice
-    elif choice in ['l', 'live']:  # live tuning mode
+    if choice in ['l', 'live']:  # live tuning mode
       return 'live', choice
     elif choice in ['exit', 'e', '']:
       self.error('Exiting opEdit!', sleep_time=0)
@@ -147,16 +134,21 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       param_info = self.op_params.fork_params[chosen_key]
 
       old_value = self.params[chosen_key]
-      if param_info.live:
+      if not param_info.static:
         self.info2('Chosen parameter: {}{} (live!)'.format(chosen_key, COLORS.BASE(207)), sleep_time=0)
       else:
-        self.info2('Chosen parameter: {}'.format(chosen_key), sleep_time=0)
+        self.info2('Chosen parameter: {}{} (static)'.format(chosen_key, COLORS.BASE(207)), sleep_time=0)
 
       to_print = []
       if param_info.has_description:
         to_print.append(COLORS.OKGREEN + '>>  Description: {}'.format(param_info.description.replace('\n', '\n  > ')) + COLORS.ENDC)
+      if param_info.static:
+        to_print.append(COLORS.WARNING + '>>  A reboot is required for changes to this parameter!' + COLORS.ENDC)
+      if not param_info.static and not param_info.live:
+        to_print.append(COLORS.WARNING + '>>  Changes take effect within 10 seconds for this parameter!' + COLORS.ENDC)
       if param_info.has_allowed_types:
         to_print.append(COLORS.RED + '>>  Allowed types: {}'.format(', '.join([at.__name__ for at in param_info.allowed_types])) + COLORS.ENDC)
+      to_print.append(COLORS.WARNING + '>>  Default value: {}'.format(self.color_from_type(param_info.default_value)) + COLORS.ENDC)
 
       if to_print:
         print('\n{}\n'.format('\n'.join(to_print)))
@@ -165,19 +157,13 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         self.change_param_list(old_value, param_info, chosen_key)  # TODO: need to merge the code in this function with the below to reduce redundant code
         return
 
-      v_color = ''
-      if type(old_value) in self.type_colors:
-        v_color = self.type_colors[type(old_value)]
-        if isinstance(old_value, bool):
-          v_color = v_color[old_value]
-
-      self.info('Current value: {}{}{} (type: {})'.format(v_color, old_value, COLORS.INFO, type(old_value).__name__), sleep_time=0)
+      self.info('Current value: {}{} (type: {})'.format(self.color_from_type(old_value), COLORS.INFO, type(old_value).__name__), sleep_time=0)
 
       while True:
-        self.prompt('\nEnter your new value:')
+        self.prompt('\nEnter your new value (enter to exit):')
         new_value = input('>> ').strip()
         if new_value == '':
-          self.info('Exiting this parameter...\n', 0.5)
+          self.info('Exiting this parameter...\n')
           return
 
         new_value = self.str_eval(new_value)
@@ -185,18 +171,18 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
           self.error('The type of data you entered ({}) is not allowed with this parameter!'.format(type(new_value).__name__))
           continue
 
-        if param_info.live:  # stay in live tuning interface
+        if not param_info.static:  # stay in live tuning interface
           self.op_params.put(chosen_key, new_value)
-          self.success('Saved {} with value: {}! (type: {})'.format(chosen_key, new_value, type(new_value).__name__))
+          self.success('Saved {} with value: {}{}! (type: {})'.format(chosen_key, self.color_from_type(new_value), COLORS.SUCCESS, type(new_value).__name__))
         else:  # else ask to save and break
-          print('\nOld value: {} (type: {})'.format(old_value, type(old_value).__name__))
-          print('New value: {} (type: {})'.format(new_value, type(new_value).__name__))
+          self.warning('\nOld value: {}{} (type: {})'.format(self.color_from_type(old_value), COLORS.WARNING, type(old_value).__name__))
+          self.success('New value: {}{} (type: {})'.format(self.color_from_type(new_value), COLORS.OKGREEN, type(new_value).__name__), sleep_time=0)
           self.prompt('\nDo you want to save this?')
-          if self.input_with_options(['Y', 'n'], 'n')[0] == 0:
+          if self.input_with_options(['Y', 'N'], 'N')[0] == 0:
             self.op_params.put(chosen_key, new_value)
             self.success('Saved!')
           else:
-            self.info('Not saved!', sleep_time=0)
+            self.info('Not saved!')
           return
 
   def change_param_list(self, old_value, param_info, chosen_key):
@@ -205,7 +191,7 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       self.prompt('\nEnter index to edit (0 to {}):'.format(len(old_value) - 1))
       choice_idx = self.str_eval(input('>> '))
       if choice_idx == '':
-        self.info('Exiting this parameter...', 0.5)
+        self.info('Exiting this parameter...')
         return
 
       if not isinstance(choice_idx, int) or choice_idx not in range(len(old_value)):
@@ -218,7 +204,7 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         self.prompt('\nEnter your new value:')
         new_value = input('>> ').strip()
         if new_value == '':
-          self.info('Exiting this list item...', 0.5)
+          self.info('Exiting this list item...')
           break
 
         new_value = self.str_eval(new_value)
@@ -229,8 +215,17 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
         old_value[choice_idx] = new_value
 
         self.op_params.put(chosen_key, old_value)
-        self.success('Saved {} with value: {}! (type: {})'.format(chosen_key, new_value, type(new_value).__name__), end='\n')
+        self.success('Saved {} with value: {}{}! (type: {})'.format(chosen_key, self.color_from_type(new_value), COLORS.SUCCESS, type(new_value).__name__), end='\n')
         break
+
+  def color_from_type(self, v):
+    v_color = ''
+    if type(v) in self.type_colors:
+      v_color = self.type_colors[type(v)]
+      if isinstance(v, bool):
+        v_color = v_color[v]
+    v = '{}{}{}'.format(v_color, v, COLORS.ENDC)
+    return v
 
   def cyan(self, msg, end=''):
     msg = self.str_color(msg, style='cyan')
@@ -239,6 +234,10 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
 
   def prompt(self, msg, end=''):
     msg = self.str_color(msg, style='prompt')
+    print(msg, flush=True, end='\n' + end)
+
+  def warning(self, msg, end=''):
+    msg = self.str_color(msg, style='warning')
     print(msg, flush=True, end='\n' + end)
 
   def info(self, msg, sleep_time=None, end=''):
@@ -285,8 +284,10 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       style = COLORS.INFO
     elif style == 'cyan':
       style = COLORS.CYAN
+    elif style == 'warning':
+      style = COLORS.WARNING
     elif isinstance(style, int):
-      style = COLORS.BASE(86)
+      style = COLORS.BASE(style)
 
     if surround:
       msg = '{}--------\n{}\n{}--------{}'.format(style, msg, COLORS.ENDC + style, COLORS.ENDC)
@@ -319,58 +320,6 @@ class opEdit:  # use by running `python /data/openpilot/op_edit.py`
       elif dat.lower() == 'true':  # else, assume string
         dat = True
     return dat
-
-  def delete_parameter(self):
-    while True:
-      self.prompt('Enter the name of the parameter to delete:')
-      key = self.str_eval(input('>> '))
-
-      if key == '':
-        return
-      if not isinstance(key, str):
-        self.error('Input must be a string!')
-        continue
-      if key not in self.params:
-        self.error("Parameter doesn't exist!")
-        continue
-
-      value = self.params.get(key)
-      print('Parameter name: {}'.format(key))
-      print('Parameter value: {} (type: {})'.format(value, type(value).__name__))
-      self.prompt('Do you want to delete this?')
-
-      if self.input_with_options(['Y', 'n'], default='n')[0] == 0:
-        self.op_params.delete(key)
-        self.success('Deleted!')
-      else:
-        self.info('Not deleted!')
-      return
-
-  def add_parameter(self):
-    while True:
-      self.prompt('Type the name of your new parameter:')
-      key = self.str_eval(input('>> '))
-
-      if key == '':
-        return
-      if not isinstance(key, str):
-        self.error('Input must be a string!')
-        continue
-
-      self.prompt("Enter the data you'd like to save with this parameter:")
-      value = input('>> ').strip()
-      value = self.str_eval(value)
-
-      print('Parameter name: {}'.format(key))
-      print('Parameter value: {} (type: {})'.format(value, type(value).__name__))
-      self.prompt('Do you want to save this?')
-
-      if self.input_with_options(['Y', 'n'], default='n')[0] == 0:
-        self.op_params.put(key, value)
-        self.success('Saved!')
-      else:
-        self.info('Not saved!')
-      return
 
 
 opEdit()
