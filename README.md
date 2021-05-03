@@ -12,9 +12,9 @@ This repo is just a backup of op_params. To install into your own fork, just gra
    CAMERA_OFFSET = op_params.get('camera_offset')
    ```
 3. Param class arguments explaination:
-   - `Param(1., NUMBER, live=True)`: No matter how often you use opParams's `.get()` function to get this param, it will update only once per second (from opEdit for example).
-   - `Param(1., NUMBER)`: Not specifying live will let the parameter update every 10 seconds (customizable in the base `Param` class)
-   - `Param(False, bool, static=True)`: Only specifying `static=True` tells opParams to never refresh its value from the file it's stored in. Great for a toggle used on openpilot startup.
+   - `Param(1., NUMBER)`: No matter how often you use opParams's `.get()` function on this param, it will update only once per 10 seconds (customizable in the base `Param` class).
+   - `Param(1., NUMBER, live=True)`: Same thing as above, but the update frequency is reduced to 1 second. It also will show up in opEdit in the special **live!** menu.
+   - `Param(False, bool, static=True)`: Only specifying `static=True` tells opParams to never refresh its value from the file it's stored in. Great for a toggle used on openpilot startup. It's only read on opParams initialization.
 4. **Important**: for variables you want to be live tunable, you need to use the `op_params.get()` function to set the variable on each update. So for example, with classes, you need to initialize opParams and the variable in the `__init__` function, and then in the class's update function, set it again at the top. Here's a fake example for longcontrol.py:
 ```python
 from common.op_params import opParams
